@@ -1,0 +1,8 @@
+{
+  "name": "focus-mode",
+  "version": "0.1.0",
+  "description": "Focus mode: a toggle that switches the Code sidebar to running-first and lists only the sessions running now",
+  "author": {
+    "name": "Alan Dias"
+  }
+}

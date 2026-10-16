@@ -1,0 +1,5 @@
+{
+  "name": "alan-mods",
+  "owner": { "name": "Alan Dias" },
+  "plugins": [{ "name": "focus-mode", "source": "./" }]
+}

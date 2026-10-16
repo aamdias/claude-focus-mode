@@ -1,7 +1,7 @@
 {
   "name": "focus-mode",
-  "version": "0.1.0",
-  "description": "Focus mode: a toggle that switches the Code sidebar to running-first and lists only the sessions running now",
+  "version": "0.2.0",
+  "description": "Focus mode for the Claude desktop app: running and recently completed sessions filed at the top, with titles refreshed from recent messages",
   "author": {
     "name": "Alan Dias"
   }

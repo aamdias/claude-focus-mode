@@ -8,19 +8,21 @@ A Claude Code mod for the Claude desktop app. It adds a focus mode so your runni
 
 ## Install
 
-At the prompt of a terminal session:
-
-```
-/plugin install focus-mode --marketplace aamdias/claude-focus-mode
-```
-
 From a shell:
 
 ```bash
-claude plugin install focus-mode --marketplace aamdias/claude-focus-mode
+claude plugin marketplace add aamdias/claude-focus-mode
 ```
 
+```bash
+claude plugin install focus-mode@alan-mods
+```
+
+At the prompt of a terminal session, the same two steps are `/plugin marketplace add aamdias/claude-focus-mode` and `/plugin install focus-mode@alan-mods`.
+
 In the desktop app, where `/plugin` does not run: click + next to the prompt box, then Plugins, Add marketplace with `aamdias/claude-focus-mode`, then Add plugin.
+
+New sessions load it after the install. In a session that is already open, run `/reload-plugins`.
 
 ## Requirements and limits
 

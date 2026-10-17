@@ -4,7 +4,6 @@ A Claude Code mod for the Claude desktop app. It adds a focus mode so your runni
 
 - **Toggle:** a row above the prompt with a **Focus** button. `/focus-mode`, `/focus-mode on` and `/focus-mode off` do the same (Claude Code has its own built-in `/focus`).
 - **Sidebar:** turning focus on switches the session list to the app's own state grouping (**Running**, **Needs input**, **Completed**), which the app keeps live, and files sessions that finished in the last day into a **Recently completed** section above it. Turning focus off puts those sessions back in the groups they came from, removes the section and brings your folders back.
-- **Open PRs:** sessions whose pull request is still open and that have been quiet for over three days move out of the app's **Ready for review** into an **Open PRs** section. Collapse it once: it stays in the sidebar after you exit (empty while focus is off), so it stays collapsed next time. A session moves back as soon as its PR merges or it runs again.
 - **Fresh titles:** while focus is on, each running session gets a new title written from its last few messages, so the sidebar says what it's doing now rather than how it started. It's redone at most every 15 minutes per session, after new activity, with one small Haiku call each. The new titles stay after you exit; **Restore titles** next to the toggle puts the originals back.
 
 ## Screenshots

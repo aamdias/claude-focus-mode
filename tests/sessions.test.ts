@@ -4,22 +4,13 @@ import { cleanTitle, placementOf, transcriptTail } from '../hooks/sessions'
 
 const NOW = Date.parse('2026-10-16T21:00:00.000Z')
 const DAY = 24 * 3600_000
-const WINDOWS = { recentMs: DAY, openPrAgeMs: 3 * DAY }
 
 test('placementOf files only recently quiet sessions, leaving running, older, pinned and archived ones to the state grouping', async () => {
-  expect(placementOf({ sessionId: 'a', isRunning: true }, NOW, WINDOWS)).toBe(null)
-  expect(placementOf({ sessionId: 'b', lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, WINDOWS)).toBe('completed')
-  expect(placementOf({ sessionId: 'c', lastActivityAt: '2026-10-10T12:00:00.000Z' }, NOW, WINDOWS)).toBe(null)
-  expect(placementOf({ sessionId: 'd', pinned: true, lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, WINDOWS)).toBe(null)
-  expect(placementOf({ sessionId: 'e', isRunning: true, isArchived: true }, NOW, WINDOWS)).toBe(null)
-})
-
-test('placementOf tucks away only open-PR sessions quiet for over three days', async () => {
-  const old = '2026-10-10T12:00:00.000Z'
-  expect(placementOf({ sessionId: 'f', prNumber: 7, prState: 'OPEN', lastActivityAt: old }, NOW, WINDOWS)).toBe('openPr')
-  expect(placementOf({ sessionId: 'g', prNumber: 8, prState: 'MERGED', lastActivityAt: old }, NOW, WINDOWS)).toBe(null)
-  expect(placementOf({ sessionId: 'h', prNumber: 9, prState: 'OPEN', lastActivityAt: '2026-10-15T12:00:00.000Z' }, NOW, WINDOWS)).toBe(null)
-  expect(placementOf({ sessionId: 'i', prNumber: 10, prState: 'OPEN', isRunning: true, lastActivityAt: old }, NOW, WINDOWS)).toBe(null)
+  expect(placementOf({ sessionId: 'a', isRunning: true }, NOW, DAY)).toBe(null)
+  expect(placementOf({ sessionId: 'b', lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, DAY)).toBe('completed')
+  expect(placementOf({ sessionId: 'c', lastActivityAt: '2026-10-10T12:00:00.000Z' }, NOW, DAY)).toBe(null)
+  expect(placementOf({ sessionId: 'd', pinned: true, lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, DAY)).toBe(null)
+  expect(placementOf({ sessionId: 'e', isRunning: true, isArchived: true }, NOW, DAY)).toBe(null)
 })
 
 test('cleanTitle keeps one plain line of at most 60 characters', async () => {

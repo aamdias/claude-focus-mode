@@ -9,38 +9,25 @@ export type ListedSession = {
   pinned?: boolean
   lastActivityAt?: string
   group?: { id: string; name: string } | null
-  /** Set when the session opened a pull request; `prState` as GitHub spells it (`OPEN`, `MERGED`, `CLOSED`). */
-  prNumber?: number
-  prState?: string
   /** The session focus runs in: `list_sessions` leaves it out, `get_session("self")` adds it. */
   isSelf?: boolean
 }
 
-/** Which focus section a session is filed into; null leaves it to the app's state grouping. */
-export type Placement = 'completed' | 'openPr' | null
-
-/** How long ago a session's activity counts as recent, and when an open PR's session is old. */
-export type FocusWindows = { recentMs: number; openPrAgeMs: number }
-
-function hasOpenPr(listed: ListedSession): boolean {
-  return listed.prNumber !== undefined && listed.prState !== 'MERGED' && listed.prState !== 'CLOSED'
-}
+/** Whether focus files a session into Recently completed; null leaves it to the app's state grouping. */
+export type Placement = 'completed' | null
 
 /**
- * Where focus mode files a session: one whose PR is still open and that has
- * been quiet past `openPrAgeMs` goes to Open PRs, out of the app's Ready for
- * review; one that went quiet within `recentMs` goes to Recently completed.
- * A running one, a pinned one (moving it into a section would unpin it), an
- * archived one or any other stays where the app's state grouping shows it.
+ * Where focus mode files a session: one that went quiet within `recentMs`
+ * goes to Recently completed; a running one, an older one, a pinned one
+ * (moving it into a section would unpin it) or an archived one stays where
+ * the app's state grouping (Running, Needs input, Completed) shows it.
  *
- * @example placementOf(row, Date.now(), { recentMs: DAY, openPrAgeMs: 3 * DAY }) // 'completed'
+ * @example placementOf(row, Date.now(), 24 * 3600_000) // 'completed'
  */
-export function placementOf(listed: ListedSession, now: number, windows: FocusWindows): Placement {
+export function placementOf(listed: ListedSession, now: number, recentMs: number): Placement {
   if (listed.isArchived === true || listed.pinned === true || listed.isRunning === true) return null
   const at = Date.parse(listed.lastActivityAt ?? '')
-  if (Number.isNaN(at)) return null
-  if (hasOpenPr(listed) && now - at > windows.openPrAgeMs) return 'openPr'
-  return now - at <= windows.recentMs ? 'completed' : null
+  return !Number.isNaN(at) && now - at <= recentMs ? 'completed' : null
 }
 
 /**

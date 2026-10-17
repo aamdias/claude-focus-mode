@@ -20,9 +20,7 @@ type SidebarView = {
  * retired on the next load: the app's state grouping shows Running and Needs
  * input itself, live, which a mod's sections cannot.
  */
-type FocusGroups = { completed: string; createdIds: string[]; openPrs?: string; running?: string; other?: string }
-/** FocusGroups once ensureGroups has made sure of both current sections. */
-type ReadyGroups = FocusGroups & { openPrs: string }
+type FocusGroups = { completed: string; createdIds: string[]; running?: string; other?: string }
 /** Per session: when it was last retitled, and the activity that title was made from. */
 type RetitleMark = { at: number; activity: string }
 
@@ -32,10 +30,7 @@ const POLL_MS = 10_000
 // a "saved to a file" error. The list is newest first, so running ones lead;
 // a smaller page is tried when the larger one is refused.
 const LIST_LIMITS = [50, 30]
-const DAY_MS = 24 * 3600_000
-// Recently completed: quiet for under a day. Open PRs: a PR still open and
-// quiet for over three days, which the app would keep in Ready for review.
-const WINDOWS = { recentMs: DAY_MS, openPrAgeMs: 3 * DAY_MS }
+const RECENT_MS = 24 * 3600_000
 // One session drives focus at a time (moves, retitles); another takes over
 // once the driver has been silent this long (closed, or its mod reloaded).
 const LEADER_STALE_MS = 3 * POLL_MS
@@ -59,12 +54,9 @@ const MOVE_TOOL = 'mcp__ccd_sidebar__move_sessions'
 const COMMAND = 'focus-mode'
 
 const COMPLETED_GROUP = 'Recently completed'
-// Never deleted on exit, like a group the person made: it keeps the collapse
-// they gave it, so old open-PR sessions stay out of sight next time too.
-const OPEN_PR_GROUP = 'Open PRs'
 // The app's own state grouping: Running, Needs input and Completed, kept live
 // by the app. Focus switches the list to it and files the sessions that went
-// quiet within a day into Recently completed above it.
+// quiet within RECENT_MS into Recently completed above it.
 const FOCUS_VIEW = { group_by: 'state', sort_by: 'recency' }
 const FOLDER_VIEW: SidebarView = { group_by: 'project', status: 'active', sort_by: 'recency', last_activity: 0 }
 
@@ -187,16 +179,13 @@ async function ensureGroup($: Api, name: string, createdIds: string[]): Promise<
   return made.id
 }
 
-async function ensureGroups($: Api): Promise<ReadyGroups> {
+async function ensureGroups($: Api): Promise<FocusGroups> {
   const stored = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
   const ids = new Set((await listGroups($)).map(group => group.id))
-  const isWhole = stored?.openPrs !== undefined && ids.has(stored.completed) && ids.has(stored.openPrs)
-  if (stored !== undefined && isWhole) return stored as ReadyGroups
-  // Keep track of sections an earlier load made, so exit still deletes them.
-  const createdIds = (stored?.createdIds ?? []).filter(id => ids.has(id))
+  if (stored !== undefined && ids.has(stored.completed)) return stored
+  const createdIds: string[] = []
   const completed = await ensureGroup($, COMPLETED_GROUP, createdIds)
-  const openPrs = await ensureGroup($, OPEN_PR_GROUP, [])
-  const groups = { ...stored, completed, openPrs, createdIds }
+  const groups = { completed, createdIds }
   await $.store.set(STORE_GROUPS, groups)
   return groups
 }
@@ -213,7 +202,7 @@ async function retireLegacySections($: Api): Promise<void> {
   const placed = await storeMap<string>($, STORE_PLACED)
   const moves = new Map<string | null, string[]>()
   for (const [sessionId, section] of Object.entries(placed)) {
-    if (section === 'completed' || section === 'openPr') continue
+    if (section === 'completed') continue
     addMove(moves, movedFrom[sessionId] ?? null, sessionId)
     delete movedFrom[sessionId]
     delete placed[sessionId]
@@ -222,8 +211,7 @@ async function retireLegacySections($: Api): Promise<void> {
   for (const groupId of legacy) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId }).catch(() => '')
   await $.store.set(STORE_MOVED_FROM, movedFrom)
   await $.store.set(STORE_PLACED, placed)
-  const { running: _running, other: _other, ...current } = stored
-  await $.store.set(STORE_GROUPS, { ...current, createdIds: stored.createdIds.filter(id => !legacy.includes(id)) })
+  await $.store.set(STORE_GROUPS, { completed: stored.completed, createdIds: stored.createdIds.filter(id => !legacy.includes(id)) })
 }
 
 /**
@@ -258,10 +246,9 @@ function addMove(moves: Map<string | null, string[]>, groupId: string | null, se
 }
 
 /**
- * Files recently quiet sessions into Recently completed and old open-PR ones
- * into Open PRs, and puts back where it was each one that left its section
- * (running again, merged, older, pinned or archived), where the app's state
- * grouping shows it.
+ * Files the sessions that went quiet within RECENT_MS into Recently
+ * completed, and puts back where it was each one that left it (running
+ * again, older, pinned or archived), where the state grouping shows it.
  */
 async function syncGroups($: Api, listed: ListedSession[], now: number): Promise<void> {
   const groups = await ensureGroups($)
@@ -269,7 +256,7 @@ async function syncGroups($: Api, listed: ListedSession[], now: number): Promise
   const placed = await storeMap<Placement>($, STORE_PLACED)
   const moves = new Map<string | null, string[]>()
   for (const one of listed) {
-    const target = placementOf(one, now, WINDOWS)
+    const target = placementOf(one, now, RECENT_MS)
     const current = placed[one.sessionId] ?? null
     if (target === current) continue
     if (current === null) movedFrom[one.sessionId] = one.group?.id ?? null
@@ -279,7 +266,7 @@ async function syncGroups($: Api, listed: ListedSession[], now: number): Promise
       delete placed[one.sessionId]
       continue
     }
-    addMove(moves, target === 'openPr' ? groups.openPrs : groups.completed, one.sessionId)
+    addMove(moves, groups.completed, one.sessionId)
     placed[one.sessionId] = target
   }
   await moveAll($, moves)
@@ -379,7 +366,7 @@ async function refresh($: Api): Promise<void> {
   try {
     const listed = await listSessions($)
     const now = await $.clock.now()
-    completedCount = listed.filter(one => placementOf(one, now, WINDOWS) === 'completed').length
+    completedCount = listed.filter(one => placementOf(one, now, RECENT_MS) === 'completed').length
     runningCount = listed.filter(one => one.isRunning === true && one.isArchived !== true).length
     problem = null
     // The status line is the one focus signal the desktop always draws: the

@@ -9,7 +9,6 @@ const SESSIONS = [
   { sessionId: 'local_a', title: 'Ship the parser', isRunning: true, lastActivityAt: '2026-10-16T21:00:00.000Z', group: null },
   { sessionId: 'local_b', title: 'Done earlier', isRunning: false, lastActivityAt: '2026-10-16T15:00:00.000Z', group: { id: 'cg-mine', name: 'Mine' } },
   { sessionId: 'local_c', title: 'Old idea', isRunning: false, lastActivityAt: '2026-10-01T10:00:00.000Z', group: null },
-  { sessionId: 'local_d', title: 'Waiting on review', isRunning: false, prNumber: 12, prState: 'OPEN', lastActivityAt: '2026-10-05T10:00:00.000Z', group: null },
 ]
 
 /** Answers an app tool the way the desktop app does: its text, as the model reads it. */
@@ -72,11 +71,8 @@ test('focus switches to state grouping, files recent sessions into Recently comp
   // The app's own Running, Needs input and Completed take over the list.
   expect(app.view.group_by).toBe('state')
   const completed = app.groups.find(group => group.name === 'Recently completed')
-  const openPrs = app.groups.find(group => group.name === 'Open PRs')
-  expect(app.groups.map(group => group.name)).toEqual(['Recently completed', 'Open PRs'])
+  expect(app.groups.map(group => group.name)).toEqual(['Recently completed'])
   expect(app.placedIn.get('local_b')).toBe(completed?.id)
-  // An open PR quiet for over three days leaves the app's Ready for review.
-  expect(app.placedIn.get('local_d')).toBe(openPrs?.id)
   // Running and older sessions stay where the state grouping shows them.
   expect(app.placedIn.has('local_a')).toBe(false)
   expect(app.placedIn.has('local_c')).toBe(false)
@@ -88,9 +84,7 @@ test('focus switches to state grouping, files recent sessions into Recently comp
   const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
   expect(turnedOff.text).toContain('Focus mode off')
   expect(app.placedIn.get('local_b')).toBe('cg-mine')
-  expect(app.placedIn.get('local_d')).toBe(null)
-  // Open PRs stays, so a collapse the person gave it survives the next focus.
-  expect(app.groups.map(group => group.name)).toEqual(['Open PRs'])
+  expect(app.groups.length).toBe(0)
   expect(app.view.group_by).toBe('project')
 })
 
@@ -123,7 +117,7 @@ test("0.3.0's Running and Other sessions sections are emptied back into place an
   })
 
   await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
-  expect(app.groups.map(group => group.name)).toEqual(['Recently completed', 'Open PRs'])
+  expect(app.groups.map(group => group.name)).toEqual(['Recently completed'])
   expect(app.placedIn.get('local_a')).toBe(null)
   // An old session outside the listed window still goes back to its own group.
   expect(app.placedIn.get('local_old')).toBe('cg-mine')

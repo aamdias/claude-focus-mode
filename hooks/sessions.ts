@@ -4,48 +4,23 @@
 export type ListedSession = {
   sessionId: string
   title?: string
-  cwd?: string
-  branch?: string
   isArchived?: boolean
   isRunning?: boolean
   pinned?: boolean
   lastActivityAt?: string
   group?: { id: string; name: string } | null
+  /** The session focus runs in: `list_sessions` leaves it out, `get_session("self")` adds it. */
+  isSelf?: boolean
 }
 
-/** A Code-tab session that is running right now, as the pane lists it. */
-export type RunningSession = {
-  id: string
-  title: string
-  /** Last segment of the session's working directory. */
-  folder: string
-  branch: string | null
-  /** ISO timestamp of the session's last activity. */
-  lastActivityAt: string
-}
-
-/** Which focus group a session belongs in; null leaves it where the person put it. */
-export type Placement = 'running' | 'completed' | null
-
-export function lastSegment(path: string | undefined): string {
-  if (path === undefined) return ''
-  return path.split('/').filter(Boolean).pop() ?? path
-}
-
-export function toRunning(listed: ListedSession): RunningSession {
-  return {
-    id: listed.sessionId,
-    title: listed.title ?? 'Untitled session',
-    folder: lastSegment(listed.cwd),
-    branch: listed.branch ?? null,
-    lastActivityAt: listed.lastActivityAt ?? '',
-  }
-}
+/** Which focus section a session belongs in; null leaves it where the person put it. */
+export type Placement = 'running' | 'completed' | 'other' | null
 
 /**
  * Where focus mode files a session: running ones in Running, ones that went
- * quiet within `recentMs` in Recently completed, everything else untouched.
- * Pinned sessions are left alone: moving one into a group unpins it.
+ * quiet within `recentMs` in Recently completed, every other active one in
+ * Other sessions. Pinned and archived sessions are left alone: moving a pinned
+ * one into a section would unpin it.
  *
  * @example placementOf(row, Date.now(), 24 * 3600_000) // 'running'
  */
@@ -53,16 +28,8 @@ export function placementOf(listed: ListedSession, now: number, recentMs: number
   if (listed.isArchived === true || listed.pinned === true) return null
   if (listed.isRunning === true) return 'running'
   const at = Date.parse(listed.lastActivityAt ?? '')
-  if (Number.isNaN(at)) return null
-  return now - at <= recentMs ? 'completed' : null
-}
-
-export function ago(at: number, now: number): string {
-  const seconds = Math.max(0, Math.round((now - at) / 1000))
-  if (Number.isNaN(seconds)) return ''
-  if (seconds < 60) return 'just now'
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`
-  return `${Math.round(seconds / 3600)}h ago`
+  if (!Number.isNaN(at) && now - at <= recentMs) return 'completed'
+  return 'other'
 }
 
 /**

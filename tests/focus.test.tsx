@@ -1,11 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-const PANE = {
-  plugin: 'focus-mode',
-  component: 'Pane',
-  requestId: 'focus-mode',
-  props: { title: 'Focus', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
-} as const
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as const
 const NOW = Date.parse('2026-10-16T21:05:00.000Z')
 
@@ -76,23 +70,21 @@ test('focus files sessions into Running / Recently completed, retitles running o
   expect(completed).toBeDefined()
   expect(placedIn.get('local_a')).toBe(running?.id)
   expect(placedIn.get('local_b')).toBe(completed?.id)
-  expect(placedIn.has('local_c')).toBe(false)
+  const other = groups.find(group => group.name === 'Other sessions')
+  expect(other).toBeDefined()
+  expect(placedIn.get('local_c')).toBe(other?.id)
 
   // Retitling runs unawaited after the refresh; let it settle.
   await clock.advance(1)
   expect(titles.get('local_a')).toBe('Parser rewrite review')
 
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const drawn = JSON.stringify(await $.ui.render({ ...PANE, surface } as never))
-    expect(drawn).toContain('Ship the parser')
-    expect(drawn).not.toContain('Old idea')
-  }
-
   const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
   expect(turnedOff.text).toContain('Focus mode off')
   expect(placedIn.get('local_a')).toBe('cg-mine')
   expect(placedIn.get('local_b')).toBe(null)
-  expect(groups.length).toBe(0)
+  expect(placedIn.get('local_c')).toBe(null)
+  // Other sessions stays, so a collapse the person gave it survives the next focus.
+  expect(groups.map(group => group.name)).toEqual(['Other sessions'])
   expect(view.group_by).toBe('project')
 })
 

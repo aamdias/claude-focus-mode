@@ -15,11 +15,12 @@ type SidebarView = {
 }
 
 /**
- * The focus sections' ids, and which of them focus mode created (and so
- * deletes on exit). Other sessions is never in `createdIds`: it stays, so
- * the person collapses it once and it stays collapsed.
+ * The Recently completed section's id, and the sections focus mode created
+ * (and so deletes on exit). `running` and `other` are 0.3.0's own sections,
+ * retired on the next load: the app's state grouping shows Running and Needs
+ * input itself, live, which a mod's sections cannot.
  */
-type FocusGroups = { running: string; completed: string; other: string; createdIds: string[] }
+type FocusGroups = { completed: string; createdIds: string[]; running?: string; other?: string }
 /** Per session: when it was last retitled, and the activity that title was made from. */
 type RetitleMark = { at: number; activity: string }
 
@@ -52,9 +53,12 @@ const MOVE_TOOL = 'mcp__ccd_sidebar__move_sessions'
 // Claude Code ships a built-in /focus, so the mod's command can't take that name.
 const COMMAND = 'focus-mode'
 
-const RUNNING_GROUP = 'Running'
 const COMPLETED_GROUP = 'Recently completed'
-const OTHER_GROUP = 'Other sessions'
+// The app's own state grouping: Running, Needs input and Completed, kept live
+// by the app. Focus switches the list to it and files the sessions that went
+// quiet within RECENT_MS into Recently completed above it.
+const FOCUS_VIEW = { group_by: 'state', sort_by: 'recency' }
+const FOLDER_VIEW: SidebarView = { group_by: 'project', status: 'active', sort_by: 'recency', last_activity: 0 }
 
 // $.store keys, shared by every session that loads the mod and kept across
 // restarts, so focus survives one and exit can undo what focus did.
@@ -176,20 +180,58 @@ async function ensureGroup($: Api, name: string, createdIds: string[]): Promise<
 }
 
 async function ensureGroups($: Api): Promise<FocusGroups> {
-  const stored = (await $.store.get(STORE_GROUPS)) as Partial<FocusGroups> | undefined
+  const stored = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
   const ids = new Set((await listGroups($)).map(group => group.id))
-  const isWhole = [stored?.running, stored?.completed, stored?.other].every(id => id !== undefined && ids.has(id))
-  if (stored !== undefined && isWhole) return stored as FocusGroups
+  if (stored !== undefined && ids.has(stored.completed)) return stored
   const createdIds: string[] = []
-  // New sections land above the earlier ones, so they are made bottom-up:
-  // Other sessions, then Recently completed, then Running on top. Other
-  // sessions goes in no `createdIds`, so exit leaves it (and its collapse).
-  const other = await ensureGroup($, OTHER_GROUP, [])
   const completed = await ensureGroup($, COMPLETED_GROUP, createdIds)
-  const runningId = await ensureGroup($, RUNNING_GROUP, createdIds)
-  const groups = { running: runningId, completed, other, createdIds }
+  const groups = { completed, createdIds }
   await $.store.set(STORE_GROUPS, groups)
   return groups
+}
+
+/**
+ * Retires 0.3.0's Running and Other sessions: every session filed there goes
+ * back where it was, and the two sections are deleted. A no-op once done.
+ */
+async function retireLegacySections($: Api): Promise<void> {
+  const stored = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
+  const legacy = [stored?.running, stored?.other].filter((id): id is string => id !== undefined)
+  if (stored === undefined || legacy.length === 0) return
+  const movedFrom = await storeMap<string | null>($, STORE_MOVED_FROM)
+  const placed = await storeMap<string>($, STORE_PLACED)
+  const moves = new Map<string | null, string[]>()
+  for (const [sessionId, section] of Object.entries(placed)) {
+    if (section === 'completed') continue
+    addMove(moves, movedFrom[sessionId] ?? null, sessionId)
+    delete movedFrom[sessionId]
+    delete placed[sessionId]
+  }
+  await moveAll($, moves)
+  for (const groupId of legacy) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId }).catch(() => '')
+  await $.store.set(STORE_MOVED_FROM, movedFrom)
+  await $.store.set(STORE_PLACED, placed)
+  await $.store.set(STORE_GROUPS, { completed: stored.completed, createdIds: stored.createdIds.filter(id => !legacy.includes(id)) })
+}
+
+/**
+ * Switches the list to the app's state grouping, first saving the view it
+ * replaces (once per focus). A saved view that is itself state grouping
+ * (left by an earlier focus) is replaced by folders, so exit never keeps
+ * the folders hidden.
+ */
+async function enterStateView($: Api): Promise<void> {
+  if ((await $.store.get(STORE_PREVIOUS_VIEW)) === undefined) {
+    const current = await setSidebarView($, { status: 'active' })
+    await $.store.set(STORE_PREVIOUS_VIEW, current.group_by === 'state' ? FOLDER_VIEW : current)
+  }
+  await setSidebarView($, FOCUS_VIEW)
+}
+
+async function leaveStateView($: Api): Promise<void> {
+  const previous = (await $.store.get(STORE_PREVIOUS_VIEW)) as SidebarView | undefined
+  await setSidebarView($, previous === undefined || previous.group_by === 'state' ? FOLDER_VIEW : previous)
+  await $.store.delete(STORE_PREVIOUS_VIEW)
 }
 
 /** Moves sessions in batches, one `move_sessions` per destination (null: ungrouped). */
@@ -203,15 +245,10 @@ function addMove(moves: Map<string | null, string[]>, groupId: string | null, se
   moves.set(groupId, [...(moves.get(groupId) ?? []), sessionId])
 }
 
-function groupFor(groups: FocusGroups, target: Exclude<Placement, null>): string {
-  if (target === 'running') return groups.running
-  return target === 'completed' ? groups.completed : groups.other
-}
-
 /**
- * Files every listed session into Running, Recently completed or Other
- * sessions, and puts back where it was each one focus should leave alone
- * (pinned or archived since).
+ * Files the sessions that went quiet within RECENT_MS into Recently
+ * completed, and puts back where it was each one that left it (running
+ * again, older, pinned or archived), where the state grouping shows it.
  */
 async function syncGroups($: Api, listed: ListedSession[], now: number): Promise<void> {
   const groups = await ensureGroups($)
@@ -229,7 +266,7 @@ async function syncGroups($: Api, listed: ListedSession[], now: number): Promise
       delete placed[one.sessionId]
       continue
     }
-    addMove(moves, groupFor(groups, target), one.sessionId)
+    addMove(moves, groups.completed, one.sessionId)
     placed[one.sessionId] = target
   }
   await moveAll($, moves)
@@ -244,8 +281,9 @@ async function undoGroups($: Api): Promise<void> {
   for (const [sessionId, groupId] of Object.entries(movedFrom)) addMove(moves, groupId, sessionId)
   await moveAll($, moves)
   const groups = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
-  for (const groupId of groups?.createdIds ?? []) {
-    await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId })
+  const sectionIds = new Set([...(groups?.createdIds ?? []), groups?.running, groups?.other])
+  for (const groupId of sectionIds) {
+    if (groupId !== undefined) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId })
   }
   await $.store.delete(STORE_MOVED_FROM)
   await $.store.delete(STORE_PLACED)
@@ -328,8 +366,8 @@ async function refresh($: Api): Promise<void> {
   try {
     const listed = await listSessions($)
     const now = await $.clock.now()
-    runningCount = listed.filter(one => placementOf(one, now, RECENT_MS) === 'running').length
     completedCount = listed.filter(one => placementOf(one, now, RECENT_MS) === 'completed').length
+    runningCount = listed.filter(one => one.isRunning === true && one.isArchived !== true).length
     problem = null
     $.ui.status(`Focus · ${runningCount} running`)
     if (isOn && (await isLeader($, now))) {
@@ -344,6 +382,8 @@ async function refresh($: Api): Promise<void> {
 
 async function startFocus($: Api): Promise<void> {
   isOn = true
+  await retireLegacySections($)
+  await enterStateView($)
   retitledCount = Object.keys(await storeMap<string>($, STORE_ORIGINAL_TITLES)).length
   poll?.cancel()
   poll = $.clock.every(POLL_MS, () => void refresh($))
@@ -354,22 +394,14 @@ async function turnOn($: Api): Promise<string> {
   if (isOn) return 'Focus mode is already on.'
   await $.store.set(STORE_IS_ON, true)
   await startFocus($)
-  return 'Focus mode on: Running and Recently completed at the top, everything else in Other sessions.'
+  return 'Focus mode on: Recently completed on top, then the app\'s Running, Needs input and Completed.'
 }
 
 async function turnOff($: Api): Promise<string> {
   poll?.cancel()
   poll = undefined
   await undoGroups($)
-  // Up to 0.2.0, focus switched the list to state grouping and saved the view
-  // it found. That saved view could itself be "state" (taken while an earlier
-  // focus was on), so restoring it kept the folders hidden; such a view is
-  // dropped, and folders come back in its place.
-  const previous = (await $.store.get(STORE_PREVIOUS_VIEW)) as SidebarView | undefined
-  if (previous !== undefined) {
-    await setSidebarView($, previous.group_by === 'state' ? { group_by: 'project' } : previous)
-  }
-  await $.store.delete(STORE_PREVIOUS_VIEW)
+  await leaveStateView($)
   await $.store.delete(STORE_LEADER)
   await $.store.set(STORE_IS_ON, false)
   isOn = false
@@ -423,8 +455,9 @@ export const register: Register = on => {
   })
 
   // The toggle: one row above the prompt, in every session the mod loads in.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e) => {
+    // Drawn even under a question box (hasSurvey): the toggle has no hotkey,
+    // so it takes no digit from the survey, and hiding it there lost it.
     const { Box, Button, Text } = $.ui.resolve(e)
 
     return (

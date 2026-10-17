@@ -13,23 +13,21 @@ export type ListedSession = {
   isSelf?: boolean
 }
 
-/** Which focus section a session belongs in; null leaves it where the person put it. */
-export type Placement = 'running' | 'completed' | 'other' | null
+/** Whether focus files a session into Recently completed; null leaves it to the app's state grouping. */
+export type Placement = 'completed' | null
 
 /**
- * Where focus mode files a session: running ones in Running, ones that went
- * quiet within `recentMs` in Recently completed, every other active one in
- * Other sessions. Pinned and archived sessions are left alone: moving a pinned
- * one into a section would unpin it.
+ * Where focus mode files a session: one that went quiet within `recentMs`
+ * goes to Recently completed; a running one, an older one, a pinned one
+ * (moving it into a section would unpin it) or an archived one stays where
+ * the app's state grouping (Running, Needs input, Completed) shows it.
  *
- * @example placementOf(row, Date.now(), 24 * 3600_000) // 'running'
+ * @example placementOf(row, Date.now(), 24 * 3600_000) // 'completed'
  */
 export function placementOf(listed: ListedSession, now: number, recentMs: number): Placement {
-  if (listed.isArchived === true || listed.pinned === true) return null
-  if (listed.isRunning === true) return 'running'
+  if (listed.isArchived === true || listed.pinned === true || listed.isRunning === true) return null
   const at = Date.parse(listed.lastActivityAt ?? '')
-  if (!Number.isNaN(at) && now - at <= recentMs) return 'completed'
-  return 'other'
+  return !Number.isNaN(at) && now - at <= recentMs ? 'completed' : null
 }
 
 /**

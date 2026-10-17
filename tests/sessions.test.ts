@@ -5,11 +5,11 @@ import { cleanTitle, placementOf, transcriptTail } from '../hooks/sessions'
 const NOW = Date.parse('2026-10-16T21:00:00.000Z')
 const DAY = 24 * 3600_000
 
-test('placementOf files running, recently quiet and older sessions, and leaves pinned and archived alone', async () => {
-  expect(placementOf({ sessionId: 'a', isRunning: true }, NOW, DAY)).toBe('running')
+test('placementOf files only recently quiet sessions, leaving running, older, pinned and archived ones to the state grouping', async () => {
+  expect(placementOf({ sessionId: 'a', isRunning: true }, NOW, DAY)).toBe(null)
   expect(placementOf({ sessionId: 'b', lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, DAY)).toBe('completed')
-  expect(placementOf({ sessionId: 'c', lastActivityAt: '2026-10-10T12:00:00.000Z' }, NOW, DAY)).toBe('other')
-  expect(placementOf({ sessionId: 'd', isRunning: true, pinned: true }, NOW, DAY)).toBe(null)
+  expect(placementOf({ sessionId: 'c', lastActivityAt: '2026-10-10T12:00:00.000Z' }, NOW, DAY)).toBe(null)
+  expect(placementOf({ sessionId: 'd', pinned: true, lastActivityAt: '2026-10-16T12:00:00.000Z' }, NOW, DAY)).toBe(null)
   expect(placementOf({ sessionId: 'e', isRunning: true, isArchived: true }, NOW, DAY)).toBe(null)
 })
 

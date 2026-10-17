@@ -68,6 +68,8 @@ test('focus files sessions into Running / Recently completed, retitles running o
 
   const turnedOn = await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
   expect(turnedOn.text).toContain('Focus mode on')
+  // Focus files sessions into its sections and leaves the folder grouping alone.
+  expect(view.group_by).toBe('project')
   const running = groups.find(group => group.name === 'Running')
   const completed = groups.find(group => group.name === 'Recently completed')
   expect(running).toBeDefined()
@@ -91,5 +93,36 @@ test('focus files sessions into Running / Recently completed, retitles running o
   expect(placedIn.get('local_a')).toBe('cg-mine')
   expect(placedIn.get('local_b')).toBe(null)
   expect(groups.length).toBe(0)
+  expect(view.group_by).toBe('project')
+})
+
+test('exit gives the folders back when 0.2.0 left a state grouping saved as the previous view', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.store(on, {
+    isOn: true,
+    previousView: { group_by: 'state', status: 'active', sort_by: 'recency', last_activity: 0 },
+  })
+  for (const event of ['ui.close', 'ui.status', 'ui.invalidate', 'ui.toast'] as const) {
+    on(event, () => ({ value: undefined }) as never)
+  }
+  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  on('session.id', () => ({ value: 'local_me' }) as never)
+
+  let view = { group_by: 'state', status: 'active', sort_by: 'recency', last_activity: 0 }
+  on('tool.call', { tool: 'mcp__ccd_sidebar__set_view' }, (_$, e) => {
+    const { tool: _tool, tool_use_id: _id, ...asked } = e as unknown as Record<string, unknown>
+    view = { ...view, ...asked }
+    return answer(JSON.stringify({ changed: 1, view }))
+  })
+  on('tool.call', { tool: 'mcp__ccd_session_mgmt__list_sessions' }, () => answer('[]'))
+  on('tool.call', { tool: 'mcp__ccd_sidebar__list_groups' }, () => answer('No custom sidebar groups.'))
+  on('tool.call', { tool: 'mcp__ccd_sidebar__create_group' }, (_$, e) =>
+    answer(JSON.stringify({ id: `cg-${(e as unknown as { name: string }).name}`, name: '' })),
+  )
+  on('tool.call', { tool: 'mcp__ccd_sidebar__delete_group' }, () => answer('Deleted the group.'))
+
+  await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
+  const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
+  expect(turnedOff.text).toContain('Focus mode off')
   expect(view.group_by).toBe('project')
 })

@@ -49,8 +49,6 @@ const COMMAND = 'focus-mode'
 
 const RUNNING_GROUP = 'Running'
 const COMPLETED_GROUP = 'Recently completed'
-const FOCUS_VIEW = { group_by: 'state', status: 'active', sort_by: 'recency' }
-const FOCUS_RECENCY_DAYS = 1
 
 // $.store keys, shared by every session that loads the mod and kept across
 // restarts, so focus survives one and exit can undo what focus did.
@@ -319,11 +317,8 @@ async function startFocus($: Api): Promise<void> {
 
 async function turnOn($: Api): Promise<string> {
   if (isOn) return 'Focus mode is already on.'
-  // set_view has no read: re-applying "active" (the default) answers the
-  // current settings, saved so turning focus off restores them.
-  const before = await setSidebarView($, { status: 'active' })
-  await $.store.set(STORE_PREVIOUS_VIEW, before)
-  await setSidebarView($, { ...FOCUS_VIEW, last_activity: FOCUS_RECENCY_DAYS })
+  // The person's own grouping (folders, usually) is left as it is: the
+  // Running and Recently completed sections do the focusing above it.
   await $.store.set(STORE_IS_ON, true)
   await startFocus($)
   return 'Focus mode on: running and recently completed sessions are filed at the top.'
@@ -333,8 +328,14 @@ async function turnOff($: Api): Promise<string> {
   poll?.cancel()
   poll = undefined
   await undoGroups($)
+  // Up to 0.2.0, focus switched the list to state grouping and saved the view
+  // it found. That saved view could itself be "state" (taken while an earlier
+  // focus was on), so restoring it kept the folders hidden; such a view is
+  // dropped, and folders come back in its place.
   const previous = (await $.store.get(STORE_PREVIOUS_VIEW)) as SidebarView | undefined
-  if (previous !== undefined) await setSidebarView($, previous)
+  if (previous !== undefined) {
+    await setSidebarView($, previous.group_by === 'state' ? { group_by: 'project' } : previous)
+  }
   await $.store.delete(STORE_PREVIOUS_VIEW)
   await $.store.delete(STORE_LEADER)
   await $.store.set(STORE_IS_ON, false)

@@ -1,6 +1,6 @@
 {
   "name": "focus-mode",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Focus mode for the Claude desktop app: running and recently completed sessions filed at the top, with titles refreshed from recent messages",
   "author": {
     "name": "Alan Dias"

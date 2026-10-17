@@ -2,7 +2,7 @@
 
 A Claude Code mod for the Claude desktop app. It adds a focus mode so your running sessions don't get lost under long lists of folders in the sidebar.
 
-- **Toggle:** a row above the prompt with a **Focus** button. `/focus`, `/focus on` and `/focus off` do the same.
+- **Toggle:** a row above the prompt with a **Focus** button. `/focus-mode`, `/focus-mode on` and `/focus-mode off` do the same (Claude Code has its own built-in `/focus`).
 - **Sidebar sections:** turning focus on files running sessions under a **Running** section and sessions that finished in the last day under **Recently completed**, both above your other sessions. Turning it off puts every session back in the group it came from and removes the two sections.
 - **Fresh titles:** while focus is on, each running session gets a new title written from its last few messages, so the sidebar says what it's doing now rather than how it started. It's redone at most every 15 minutes per session, after new activity, with one small Haiku call each. The new titles stay after you exit; **Restore titles** in the pane puts the originals back.
 - **Running list:** a pane titled "Focus · running now" lists only the Code sessions that are running right now. It refreshes every 10 seconds.

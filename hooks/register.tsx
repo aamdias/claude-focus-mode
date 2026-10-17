@@ -44,6 +44,9 @@ const CREATE_GROUP_TOOL = 'mcp__ccd_sidebar__create_group'
 const DELETE_GROUP_TOOL = 'mcp__ccd_sidebar__delete_group'
 const MOVE_TOOL = 'mcp__ccd_sidebar__move_sessions'
 
+// Claude Code ships a built-in /focus, so the mod's command can't take that name.
+const COMMAND = 'focus-mode'
+
 const RUNNING_GROUP = 'Running'
 const COMPLETED_GROUP = 'Recently completed'
 const FOCUS_VIEW = { group_by: 'state', status: 'active', sort_by: 'recency' }
@@ -355,17 +358,22 @@ async function toggle($: Api): Promise<string> {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'focus',
-      description: 'Toggle focus mode: running sessions first, everything else out of the way',
-      argumentHint: '[on|off]',
-    })
+    try {
+      await $.command.register({
+        name: COMMAND,
+        description: 'Toggle focus mode: running sessions first, everything else out of the way',
+        argumentHint: '[on|off]',
+      })
+    } catch (error) {
+      // The band's button still toggles focus; a refused name must not stop it.
+      $.ui.log(`focus-mode: /${COMMAND} not registered: ${describeError(error)}`)
+    }
     if ((await $.store.get(STORE_IS_ON)) === true) await startFocus($)
 
     return next(e)
   })
 
-  on('command.run', { command: 'focus' }, async ($, e) => {
+  on('command.run', { command: COMMAND }, async ($, e) => {
     const wanted = e.args.trim().toLowerCase()
     if ((wanted === 'on' && isOn) || (wanted === 'off' && !isOn)) {
       return { text: `Focus mode is already ${wanted}.` }

@@ -66,7 +66,7 @@ test('focus files sessions into Running / Recently completed, retitles running o
     return answer('Renamed.')
   })
 
-  const turnedOn = await $.command.run({ ...RUN, command: 'focus', args: 'on' })
+  const turnedOn = await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
   expect(turnedOn.text).toContain('Focus mode on')
   const running = groups.find(group => group.name === 'Running')
   const completed = groups.find(group => group.name === 'Recently completed')
@@ -86,7 +86,7 @@ test('focus files sessions into Running / Recently completed, retitles running o
     expect(drawn).not.toContain('Old idea')
   }
 
-  const turnedOff = await $.command.run({ ...RUN, command: 'focus', args: 'off' })
+  const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
   expect(turnedOff.text).toContain('Focus mode off')
   expect(placedIn.get('local_a')).toBe('cg-mine')
   expect(placedIn.get('local_b')).toBe(null)

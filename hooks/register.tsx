@@ -369,7 +369,9 @@ async function refresh($: Api): Promise<void> {
     completedCount = listed.filter(one => placementOf(one, now, RECENT_MS) === 'completed').length
     runningCount = listed.filter(one => one.isRunning === true && one.isArchived !== true).length
     problem = null
-    $.ui.status(`Focus · ${runningCount} running`)
+    // The status line is the one focus signal the desktop always draws: the
+    // band above the prompt only shows there while a turn runs.
+    $.ui.status(`● Focus mode ON · ${runningCount} working · /${COMMAND} off to exit`)
     if (isOn && (await isLeader($, now))) {
       await syncGroups($, listed, now)
       void retitleRunning($, listed, now)
@@ -394,7 +396,8 @@ async function turnOn($: Api): Promise<string> {
   if (isOn) return 'Focus mode is already on.'
   await $.store.set(STORE_IS_ON, true)
   await startFocus($)
-  return 'Focus mode on: Recently completed on top, then the app\'s Running, Needs input and Completed.'
+  $.ui.toast('Focus mode on')
+  return 'Focus mode on: Recently completed on top, then the app\'s Working, Needs input and Completed.'
 }
 
 async function turnOff($: Api): Promise<string> {
@@ -407,6 +410,7 @@ async function turnOff($: Api): Promise<string> {
   isOn = false
   $.ui.status(undefined)
   $.ui.invalidate('ui.render')
+  $.ui.toast('Focus mode off')
   return 'Focus mode off: your sessions are back in their folders. Refreshed titles stay.'
 }
 
@@ -423,7 +427,7 @@ async function toggle($: Api): Promise<string> {
 
 function bandText(): string {
   if (!isOn) return 'Focus mode off '
-  return `Focus · ${runningCount} running · ${completedCount} recently completed `
+  return `● Focus mode ON · ${runningCount} working · ${completedCount} recently completed `
 }
 
 export const register: Register = on => {

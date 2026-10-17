@@ -99,13 +99,13 @@ test('exit gives the folders back when an older version left a state grouping sa
   expect(app.view.group_by).toBe('project')
 })
 
-test("0.3.0's Running and Other sessions sections are emptied back into place and deleted", async ($, on) => {
+test("earlier versions' Running, Other sessions and Open PRs sections are emptied back into place and deleted", async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.store(on, {
     isOn: true,
-    groups: { completed: 'cg-done', running: 'cg-run', other: 'cg-other', createdIds: ['cg-done', 'cg-run'] },
-    placed: { local_a: 'running', local_b: 'completed', local_old: 'other' },
-    movedFrom: { local_a: null, local_b: 'cg-mine', local_old: 'cg-mine' },
+    groups: { completed: 'cg-done', running: 'cg-run', other: 'cg-other', openPrs: 'cg-pr', createdIds: ['cg-done', 'cg-run'] },
+    placed: { local_a: 'running', local_b: 'completed', local_old: 'other', local_pr: 'openPr' },
+    movedFrom: { local_a: null, local_b: 'cg-mine', local_old: 'cg-mine', local_pr: null },
   })
   const app = fakeApp(on, {
     view: FOLDERS,
@@ -113,6 +113,7 @@ test("0.3.0's Running and Other sessions sections are emptied back into place an
       { id: 'cg-done', name: 'Recently completed' },
       { id: 'cg-run', name: 'Running' },
       { id: 'cg-other', name: 'Other sessions' },
+      { id: 'cg-pr', name: 'Open PRs' },
     ],
   })
 
@@ -121,6 +122,7 @@ test("0.3.0's Running and Other sessions sections are emptied back into place an
   expect(app.placedIn.get('local_a')).toBe(null)
   // An old session outside the listed window still goes back to its own group.
   expect(app.placedIn.get('local_old')).toBe('cg-mine')
+  expect(app.placedIn.get('local_pr')).toBe(null)
 
   // Let the unawaited retitle settle, then stop the poll, before the test ends.
   await clock.advance(1)

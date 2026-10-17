@@ -16,11 +16,13 @@ type SidebarView = {
 
 /**
  * The Recently completed section's id, and the sections focus mode created
- * (and so deletes on exit). `running` and `other` are 0.3.0's own sections,
- * retired on the next load: the app's state grouping shows Running and Needs
- * input itself, live, which a mod's sections cannot.
+ * (and so deletes on exit). The rest are retired on the next load: `running`
+ * and `other` are 0.3.0's (the app's state grouping shows Running and Needs
+ * input itself, live, which a mod's sections cannot), `openPrs` is 0.5.0's
+ * (it moved stale open-PR sessions out of Ready for review, which added
+ * little).
  */
-type FocusGroups = { completed: string; createdIds: string[]; running?: string; other?: string }
+type FocusGroups = { completed: string; createdIds: string[]; running?: string; other?: string; openPrs?: string }
 /** Per session: when it was last retitled, and the activity that title was made from. */
 type RetitleMark = { at: number; activity: string }
 
@@ -191,12 +193,13 @@ async function ensureGroups($: Api): Promise<FocusGroups> {
 }
 
 /**
- * Retires 0.3.0's Running and Other sessions: every session filed there goes
- * back where it was, and the two sections are deleted. A no-op once done.
+ * Retires earlier versions' sections (0.3.0's Running and Other sessions,
+ * 0.5.0's Open PRs): every session filed there goes back where it was, and
+ * the sections are deleted. A no-op once done.
  */
 async function retireLegacySections($: Api): Promise<void> {
   const stored = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
-  const legacy = [stored?.running, stored?.other].filter((id): id is string => id !== undefined)
+  const legacy = [stored?.running, stored?.other, stored?.openPrs].filter((id): id is string => id !== undefined)
   if (stored === undefined || legacy.length === 0) return
   const movedFrom = await storeMap<string | null>($, STORE_MOVED_FROM)
   const placed = await storeMap<string>($, STORE_PLACED)
@@ -281,7 +284,7 @@ async function undoGroups($: Api): Promise<void> {
   for (const [sessionId, groupId] of Object.entries(movedFrom)) addMove(moves, groupId, sessionId)
   await moveAll($, moves)
   const groups = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
-  const sectionIds = new Set([...(groups?.createdIds ?? []), groups?.running, groups?.other])
+  const sectionIds = new Set([...(groups?.createdIds ?? []), groups?.running, groups?.other, groups?.openPrs])
   for (const groupId of sectionIds) {
     if (groupId !== undefined) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId })
   }

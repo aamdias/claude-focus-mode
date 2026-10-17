@@ -414,7 +414,7 @@ async function turnOn($: Api): Promise<string> {
   await $.store.set(STORE_IS_ON, true)
   await startFocus($)
   $.ui.toast('Focus mode on')
-  return 'Focus mode on: Recently completed on top, then the app\'s Working, Needs input and Completed.'
+  return 'Focus mode on: Recently completed and Working on top, then the app\'s Needs input, Ready for review and Completed.'
 }
 
 async function turnOff($: Api): Promise<string> {

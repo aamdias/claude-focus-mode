@@ -22,7 +22,9 @@ type SidebarView = {
  * (it moved stale open-PR sessions out of Ready for review, which added
  * little).
  */
-type FocusGroups = { completed: string; createdIds: string[]; running?: string; other?: string; openPrs?: string }
+type FocusGroups = { completed: string; working?: string; createdIds: string[]; running?: string; other?: string; openPrs?: string }
+/** FocusGroups once ensureGroups has made sure of both current sections. */
+type ReadyGroups = FocusGroups & { working: string }
 /** Per session: when it was last retitled, and the activity that title was made from. */
 type RetitleMark = { at: number; activity: string }
 
@@ -56,6 +58,12 @@ const MOVE_TOOL = 'mcp__ccd_sidebar__move_sessions'
 const COMMAND = 'focus-mode'
 
 const COMPLETED_GROUP = 'Recently completed'
+// The app lists its own groups Needs input, Ready for review, Working,
+// Completed, and a mod cannot reorder them. A mod's sections sit above them,
+// in the order made, so running sessions get a Working section of focus's
+// own, made after Recently completed to sit just below it; the app's Working
+// is then empty and not drawn.
+const WORKING_GROUP = 'Working'
 // The app's own state grouping: Running, Needs input and Completed, kept live
 // by the app. Focus switches the list to it and files the sessions that went
 // quiet within RECENT_MS into Recently completed above it.
@@ -181,13 +189,17 @@ async function ensureGroup($: Api, name: string, createdIds: string[]): Promise<
   return made.id
 }
 
-async function ensureGroups($: Api): Promise<FocusGroups> {
+async function ensureGroups($: Api): Promise<ReadyGroups> {
   const stored = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
   const ids = new Set((await listGroups($)).map(group => group.id))
-  if (stored !== undefined && ids.has(stored.completed)) return stored
-  const createdIds: string[] = []
+  const isWhole = stored?.working !== undefined && ids.has(stored.completed) && ids.has(stored.working)
+  if (stored !== undefined && isWhole) return stored as ReadyGroups
+  // Keep the sections an earlier load made, so exit still deletes them.
+  const createdIds = (stored?.createdIds ?? []).filter(id => ids.has(id))
+  // Made in display order: each new section lands below the ones before it.
   const completed = await ensureGroup($, COMPLETED_GROUP, createdIds)
-  const groups = { completed, createdIds }
+  const working = await ensureGroup($, WORKING_GROUP, createdIds)
+  const groups = { ...stored, completed, working, createdIds }
   await $.store.set(STORE_GROUPS, groups)
   return groups
 }
@@ -205,7 +217,7 @@ async function retireLegacySections($: Api): Promise<void> {
   const placed = await storeMap<string>($, STORE_PLACED)
   const moves = new Map<string | null, string[]>()
   for (const [sessionId, section] of Object.entries(placed)) {
-    if (section === 'completed') continue
+    if (section === 'completed' || section === 'working') continue
     addMove(moves, movedFrom[sessionId] ?? null, sessionId)
     delete movedFrom[sessionId]
     delete placed[sessionId]
@@ -214,7 +226,8 @@ async function retireLegacySections($: Api): Promise<void> {
   for (const groupId of legacy) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId }).catch(() => '')
   await $.store.set(STORE_MOVED_FROM, movedFrom)
   await $.store.set(STORE_PLACED, placed)
-  await $.store.set(STORE_GROUPS, { completed: stored.completed, createdIds: stored.createdIds.filter(id => !legacy.includes(id)) })
+  const { running: _running, other: _other, openPrs: _openPrs, ...current } = stored
+  await $.store.set(STORE_GROUPS, { ...current, createdIds: stored.createdIds.filter(id => !legacy.includes(id)) })
 }
 
 /**
@@ -249,9 +262,10 @@ function addMove(moves: Map<string | null, string[]>, groupId: string | null, se
 }
 
 /**
- * Files the sessions that went quiet within RECENT_MS into Recently
- * completed, and puts back where it was each one that left it (running
- * again, older, pinned or archived), where the state grouping shows it.
+ * Files running sessions into Working and those that went quiet within
+ * RECENT_MS into Recently completed, moves each between the two as its state
+ * changes, and puts back where it was each one that left both (older, pinned
+ * or archived), where the app's state grouping shows it.
  */
 async function syncGroups($: Api, listed: ListedSession[], now: number): Promise<void> {
   const groups = await ensureGroups($)
@@ -269,7 +283,7 @@ async function syncGroups($: Api, listed: ListedSession[], now: number): Promise
       delete placed[one.sessionId]
       continue
     }
-    addMove(moves, groups.completed, one.sessionId)
+    addMove(moves, target === 'working' ? groups.working : groups.completed, one.sessionId)
     placed[one.sessionId] = target
   }
   await moveAll($, moves)

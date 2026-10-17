@@ -3,7 +3,7 @@
 A Claude Code mod for the Claude desktop app. It adds a focus mode so your running sessions don't get lost under long lists of folders in the sidebar.
 
 - **Toggle:** a row above the prompt with a **Focus** button. `/focus-mode`, `/focus-mode on` and `/focus-mode off` do the same (Claude Code has its own built-in `/focus`).
-- **Sidebar:** turning focus on switches the session list to the app's own state grouping (**Running**, **Needs input**, **Completed**), which the app keeps live, and files sessions that finished in the last day into a **Recently completed** section above it. Turning focus off puts those sessions back in the groups they came from, removes the section and brings your folders back.
+- **Sidebar:** turning focus on switches the session list to the app's own state grouping and adds two sections above it: **Recently completed** (sessions that finished in the last day) and **Working** (running sessions). The app's own Needs input, Ready for review and Completed follow below, in the app's order. The app lists its own Working group below Needs input and a mod can't reorder its groups, which is why focus keeps a Working section of its own. Turning focus off puts every session back in the group it came from, removes both sections and brings your folders back.
 - **Fresh titles:** while focus is on, each running session gets a new title written from its last few messages, so the sidebar says what it's doing now rather than how it started. It's redone at most every 15 minutes per session, after new activity, with one small Haiku call each. The new titles stay after you exit; **Restore titles** next to the toggle puts the originals back.
 
 ## Screenshots
@@ -12,7 +12,7 @@ A Claude Code mod for the Claude desktop app. It adds a focus mode so your runni
 
 ![Focus mode off](docs/focus-off.png)
 
-**Focus on**: Recently completed on top, then Running, Needs input and Completed, and the toggle above the prompt.
+**Focus on**: Recently completed and Working on top, then the app's Needs input, Ready for review and Completed.
 
 ![Focus mode on](docs/focus-on.png)
 
@@ -46,4 +46,5 @@ New sessions load it after the install. In a session that is already open, run `
 - One open session drives the moves and renames at a time; another takes over if that one closes.
 - If you set a session's title yourself, the app asks you to approve each rename. Moving sessions can ask too, depending on the session's permission mode.
 - The session focus runs in is filed like the others but never retitled: the app won't let a session read its own transcript that way.
-- A session that starts running again moves from Recently completed back to Running within about 10 seconds.
+- Sessions move between Working and Recently completed within about 10 seconds of changing state.
+- Cloud sessions aren't in the list the app gives mods, so they stay in the app's own groups.

@@ -71,10 +71,12 @@ test('focus switches to state grouping, files recent sessions into Recently comp
   // The app's own Running, Needs input and Completed take over the list.
   expect(app.view.group_by).toBe('state')
   const completed = app.groups.find(group => group.name === 'Recently completed')
-  expect(app.groups.map(group => group.name)).toEqual(['Recently completed'])
+  const working = app.groups.find(group => group.name === 'Working')
+  // Made in display order, so focus's Working sits right under Recently completed.
+  expect(app.groups.map(group => group.name)).toEqual(['Recently completed', 'Working'])
   expect(app.placedIn.get('local_b')).toBe(completed?.id)
-  // Running and older sessions stay where the state grouping shows them.
-  expect(app.placedIn.has('local_a')).toBe(false)
+  expect(app.placedIn.get('local_a')).toBe(working?.id)
+  // Older sessions stay where the state grouping shows them.
   expect(app.placedIn.has('local_c')).toBe(false)
 
   // Retitling runs unawaited after the refresh; let it settle.
@@ -84,6 +86,7 @@ test('focus switches to state grouping, files recent sessions into Recently comp
   const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
   expect(turnedOff.text).toContain('Focus mode off')
   expect(app.placedIn.get('local_b')).toBe('cg-mine')
+  expect(app.placedIn.get('local_a')).toBe(null)
   expect(app.groups.length).toBe(0)
   expect(app.view.group_by).toBe('project')
 })
@@ -118,8 +121,9 @@ test("earlier versions' Running, Other sessions and Open PRs sections are emptie
   })
 
   await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
-  expect(app.groups.map(group => group.name)).toEqual(['Recently completed'])
-  expect(app.placedIn.get('local_a')).toBe(null)
+  expect(app.groups.map(group => group.name)).toEqual(['Recently completed', 'Working'])
+  // local_a left 0.3.0's Running and, still running, is filed into the new Working.
+  expect(app.placedIn.get('local_a')).toBe(app.groups.find(group => group.name === 'Working')?.id)
   // An old session outside the listed window still goes back to its own group.
   expect(app.placedIn.get('local_old')).toBe('cg-mine')
   expect(app.placedIn.get('local_pr')).toBe(null)

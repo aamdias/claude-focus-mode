@@ -250,7 +250,11 @@ async function leaveStateView($: Api): Promise<void> {
   await $.store.delete(STORE_PREVIOUS_VIEW)
 }
 
-/** Moves sessions in batches, one `move_sessions` per destination (null: ungrouped). */
+/**
+ * Moves sessions in batches, one `move_sessions` per destination (null:
+ * ungrouped). Throws on the first batch the app refuses (in auto mode it
+ * refuses every move a mod makes on its own).
+ */
 async function moveAll($: Api, moves: Map<string | null, string[]>): Promise<void> {
   for (const [groupId, sessionIds] of moves) {
     if (sessionIds.length > 0) await callAppText($, MOVE_TOOL, { session_ids: sessionIds, group_id: groupId })
@@ -291,20 +295,38 @@ async function syncGroups($: Api, listed: ListedSession[], now: number): Promise
   await $.store.set(STORE_PLACED, placed)
 }
 
-/** Puts every session focus moved back where it was, then deletes the sections focus made. */
-async function undoGroups($: Api): Promise<void> {
+/**
+ * Puts every session focus moved back where it was, then deletes the sections
+ * focus made (both of them, found by name too, as older loads lost some ids).
+ * Best effort: answers what it could not do, '' when all went through. A
+ * session left in a deleted section falls back to Ungrouped anyway.
+ */
+async function undoGroups($: Api): Promise<string> {
+  const failures: string[] = []
   const movedFrom = await storeMap<string | null>($, STORE_MOVED_FROM)
   const moves = new Map<string | null, string[]>()
   for (const [sessionId, groupId] of Object.entries(movedFrom)) addMove(moves, groupId, sessionId)
-  await moveAll($, moves)
+  await moveAll($, moves).catch(error => failures.push(describeError(error)))
   const groups = (await $.store.get(STORE_GROUPS)) as FocusGroups | undefined
-  const sectionIds = new Set([...(groups?.createdIds ?? []), groups?.running, groups?.other, groups?.openPrs])
+  const named = await listGroups($).catch(() => [])
+  const sectionIds = new Set([
+    ...(groups?.createdIds ?? []),
+    groups?.completed,
+    groups?.working,
+    groups?.running,
+    groups?.other,
+    groups?.openPrs,
+    ...named.filter(group => group.name === COMPLETED_GROUP || group.name === WORKING_GROUP).map(group => group.id),
+  ])
+  const existing = new Set(named.map(group => group.id))
   for (const groupId of sectionIds) {
-    if (groupId !== undefined) await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId })
+    if (groupId === undefined || (named.length > 0 && !existing.has(groupId))) continue
+    await callAppText($, DELETE_GROUP_TOOL, { group_id: groupId }).catch(error => failures.push(describeError(error)))
   }
   await $.store.delete(STORE_MOVED_FROM)
   await $.store.delete(STORE_PLACED)
   await $.store.delete(STORE_GROUPS)
+  return failures.join('; ')
 }
 
 /** One running session's title from its latest messages; '' when the model gave nothing usable. */
@@ -380,6 +402,11 @@ function describeError(error: unknown): string {
 }
 
 async function refresh($: Api): Promise<void> {
+  // Another session may have turned focus off: stop here rather than refile.
+  if ((await $.store.get(STORE_IS_ON)) !== true) {
+    stopLocally($)
+    return
+  }
   try {
     const listed = await listSessions($)
     const now = await $.clock.now()
@@ -417,16 +444,33 @@ async function turnOn($: Api): Promise<string> {
   return 'Focus mode on: Recently completed and Working on top, then the app\'s Needs input, Ready for review and Completed.'
 }
 
-async function turnOff($: Api): Promise<string> {
+/** Stops this session's poll and clears its focus display; touches no stored state. */
+function stopLocally($: Api): void {
   poll?.cancel()
   poll = undefined
-  await undoGroups($)
-  await leaveStateView($)
-  await $.store.delete(STORE_LEADER)
-  await $.store.set(STORE_IS_ON, false)
   isOn = false
+  problem = null
   $.ui.status(undefined)
   $.ui.invalidate('ui.render')
+}
+
+/**
+ * Turns focus off first, then tidies the sidebar. The switch never depends on
+ * the tidying: when the app refuses a sidebar call (as auto mode does for a
+ * mod's own moves), focus is still off and the toast says what was left.
+ */
+async function turnOff($: Api): Promise<string> {
+  stopLocally($)
+  await $.store.set(STORE_IS_ON, false)
+  await $.store.delete(STORE_LEADER)
+  const failures = [
+    await undoGroups($).catch(error => describeError(error)),
+    await leaveStateView($).then(() => '', error => describeError(error)),
+  ].filter(text => text !== '')
+  if (failures.length > 0) {
+    $.ui.toast('Focus mode off; some sidebar changes were refused')
+    return `Focus mode off, but the app refused part of the cleanup (${failures.join('; ')}). Ask Claude to move the sessions back and delete the "${COMPLETED_GROUP}" and "${WORKING_GROUP}" sections.`
+  }
   $.ui.toast('Focus mode off')
   return 'Focus mode off: your sessions are back in their folders. Refreshed titles stay.'
 }
@@ -462,7 +506,12 @@ export const register: Register = on => {
     // Up to 0.2.1 focus kept a "running now" pane open; it repeated the
     // sidebar, so it is gone, and a pane left open by those versions is closed.
     await $.ui.close({ id: LEGACY_PANE }).catch(() => undefined)
-    if ((await $.store.get(STORE_IS_ON)) === true) await startFocus($)
+    if ((await $.store.get(STORE_IS_ON)) === true) {
+      // A refused sidebar call must not stop the session from starting.
+      await startFocus($).catch(error => {
+        problem = describeError(error)
+      })
+    }
 
     return next(e)
   })

@@ -19,7 +19,14 @@ const answer = (text: string): never => ({ result: text, text }) as never
  * session is filed and session titles, all read back by the test.
  */
 function fakeApp(on: On, start: { view: typeof FOLDERS; groups: { id: string; name: string }[] }) {
-  const app = { view: start.view, groups: start.groups, placedIn: new Map<string, string | null>(), titles: new Map<string, string>() }
+  const app = {
+    view: start.view,
+    groups: start.groups,
+    placedIn: new Map<string, string | null>(),
+    titles: new Map<string, string>(),
+    // Auto mode: the app refuses every move a mod's own code asks for.
+    refusesMoves: false,
+  }
   // This build's kit answers no ui, session or model calls: stand in for them.
   for (const event of ['ui.close', 'ui.status', 'ui.invalidate', 'ui.toast'] as const) {
     on(event, () => ({ value: undefined }) as never)
@@ -46,6 +53,10 @@ function fakeApp(on: On, start: { view: typeof FOLDERS; groups: { id: string; na
     return answer('Deleted the group.')
   })
   on('tool.call', { tool: 'mcp__ccd_sidebar__move_sessions' }, (_$, e) => {
+    if (app.refusesMoves) {
+      const text = "Not run: in auto mode Claude Desktop doesn't run this tool when a plugin's own code calls it."
+      return { isError: true, result: text, text } as never
+    }
     const { session_ids: ids, group_id: groupId } = e as unknown as { session_ids: string[]; group_id: string | null }
     for (const id of ids) app.placedIn.set(id, groupId)
     return answer(`Moved ${ids.length}.`)
@@ -131,4 +142,24 @@ test("earlier versions' Running, Other sessions and Open PRs sections are emptie
   // Let the unawaited retitle settle, then stop the poll, before the test ends.
   await clock.advance(1)
   await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
+})
+
+test('exit turns focus off even when the app refuses to move sessions back (auto mode)', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  mock.store(on)
+  const app = fakeApp(on, { view: FOLDERS, groups: [] })
+
+  await $.command.run({ ...RUN, command: 'focus-mode', args: 'on' })
+  await clock.advance(1)
+  app.refusesMoves = true
+
+  const turnedOff = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
+  expect(turnedOff.text).toContain('Focus mode off')
+  expect(turnedOff.text).toContain('refused')
+  // The sections are still deleted (their sessions fall back to Ungrouped) and the folders return.
+  expect(app.groups.length).toBe(0)
+  expect(app.view.group_by).toBe('project')
+  // The switch stuck: a second off finds it already off.
+  const again = await $.command.run({ ...RUN, command: 'focus-mode', args: 'off' })
+  expect(again.text).toBe('Focus mode is already off.')
 })
